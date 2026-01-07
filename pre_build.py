@@ -107,20 +107,28 @@ def prepare(arch="x64"):
     python_dir = BUILD_DIR / "python"
     extract_zip(python_zip, python_dir)
     
-    print("Configuring Python and installing pip...")
+    print("Configuring Python and installing dependencies...")
     pth_file = next(python_dir.glob("python*._pth"))
     with open(pth_file, "w") as f:
         f.write(f"{pth_file.stem}.zip\n.\nimport site\n")
     
-    get_pip = BUILD_DIR / "get-pip.py"
-    download_file("https://bootstrap.pypa.io/get-pip.py", get_pip)
-    subprocess.run([str(python_dir / "python.exe"), str(get_pip), "--no-warn-script-location"], check=True)
-    
-    print("Installing dependencies into portable Python...")
+    # Use host Python's pip to install dependencies directly into portable directory
+    # This is much faster and more reliable than installing pip into portable Python
+    print("Installing dependencies into portable Python directory...")
     shutil.copy2(src_folder / "requirements.txt", BUILD_DIR / "requirements.txt")
-    subprocess.run([str(python_dir / "python.exe"), "-m", "pip", "install", "-r", str(BUILD_DIR / "requirements.txt")], check=True)
-    subprocess.run([str(python_dir / "python.exe"), "-m", "pip", "install", "pystray", "Pillow", "pywin32"], check=True)
+    
+    try:
+        subprocess.run([
+            sys.executable, "-m", "pip", "install", 
+            "--target", str(python_dir), 
+            "-r", str(BUILD_DIR / "requirements.txt"),
+            "pystray", "Pillow", "pywin32"
+        ], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Error installing dependencies: {e}")
+        sys.exit(1)
 
+    print("Downloading NSSM...")
     nssm_zip = BUILD_DIR / "nssm.zip"
     download_file(config["nssm_url"], nssm_zip)
     nssm_extract = BUILD_DIR / "nssm_src"
