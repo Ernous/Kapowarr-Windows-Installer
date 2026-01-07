@@ -1,2 +1,5 @@
-./installer_output/
-./build_temp/
+installer_output/
+build_temp/
+version.nsh
+*.log
+installer_files/nssm.exe

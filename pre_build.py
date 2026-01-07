@@ -7,32 +7,34 @@ import json
 import subprocess
 from pathlib import Path
 
+import time
+
 REPO_URL = "https://api.github.com/repos/Casvt/Kapowarr/releases/latest"
 
 ARCH_CONFIGS = {
     "x64": {
         "python_url": "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip",
         "nssm_urls": [
-            "https://github.com/nssm-mirror/nssm/raw/gh-pages/release/nssm-2.24.zip",
+            "https://github.com/dkxce/NSSM/releases/download/v2.25/NSSM_v2.25.zip",
             "https://nssm.cc/release/nssm-2.24.zip"
         ],
-        "nssm_exe_path": "nssm-2.24/win64/nssm.exe"
+        "nssm_exe_path": "win64/nssm.exe"
     },
     "x86": {
         "python_url": "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-win32.zip",
         "nssm_urls": [
-            "https://github.com/nssm-mirror/nssm/raw/gh-pages/release/nssm-2.24.zip",
+            "https://github.com/dkxce/NSSM/releases/download/v2.25/NSSM_v2.25.zip",
             "https://nssm.cc/release/nssm-2.24.zip"
         ],
-        "nssm_exe_path": "nssm-2.24/win32/nssm.exe"
+        "nssm_exe_path": "win32/nssm.exe"
     },
     "arm64": {
         "python_url": "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-arm64.zip",
         "nssm_urls": [
-            "https://github.com/nssm-mirror/nssm/raw/gh-pages/release/nssm-2.24.zip",
+            "https://github.com/dkxce/NSSM/releases/download/v2.25/NSSM_v2.25.zip",
             "https://nssm.cc/release/nssm-2.24.zip"
         ],
-        "nssm_exe_path": "nssm-2.24/win64/nssm.exe"
+        "nssm_exe_path": "win64/nssm.exe"
     }
 }
 
@@ -40,28 +42,42 @@ BASE_DIR = Path(__file__).parent
 BUILD_DIR = BASE_DIR / "build_temp"
 INSTALLER_FILES = BASE_DIR / "installer_files"
 
-def download_file(url, dest):
-    print(f"Downloading {url} to {dest}...")
+def download_file(url, dest, retries=3, delay=5):
     gh_token = os.environ.get("GH_TOKEN")
     
-    cmd = ["curl", "-L", "-s", "-f", url, "-o", str(dest)]
-    if gh_token and "github.com" in url:
-        cmd.extend(["-H", f"Authorization: token {gh_token}"])
-    
-    try:
-        subprocess.run(cmd, check=True)
-        if not dest.exists() or dest.stat().st_size == 0:
-            raise Exception("Downloaded file is empty or missing")
-    except subprocess.CalledProcessError as e:
-        print(f"Error downloading with curl: {e}")
-        # Fallback to urllib if curl fails
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        if gh_token and "github.com" in url:
-            headers['Authorization'] = f'token {gh_token}'
+    for i in range(retries):
+        print(f"Downloading {url} to {dest} (Attempt {i+1}/{retries})...")
         
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=60) as response, open(dest, 'wb') as out_file:
-            shutil.copyfileobj(response, out_file)
+        cmd = ["curl", "-L", "-s", "-f", url, "-o", str(dest)]
+        if gh_token and "github.com" in url:
+            cmd.extend(["-H", f"Authorization: token {gh_token}"])
+        
+        try:
+            subprocess.run(cmd, check=True)
+            if dest.exists() and dest.stat().st_size > 0:
+                return # Success
+            raise Exception("Downloaded file is empty or missing")
+        except Exception as e:
+            print(f"Attempt {i+1} failed: {e}")
+            if i < retries - 1:
+                print(f"Waiting {delay} seconds before retry...")
+                time.sleep(delay)
+            else:
+                # Last attempt failed, try fallback to urllib
+                print("All curl attempts failed, trying urllib fallback...")
+                try:
+                    headers = {'User-Agent': 'Mozilla/5.0'}
+                    if gh_token and "github.com" in url:
+                        headers['Authorization'] = f'token {gh_token}'
+                    
+                    req = urllib.request.Request(url, headers=headers)
+                    with urllib.request.urlopen(req, timeout=60) as response, open(dest, 'wb') as out_file:
+                        shutil.copyfileobj(response, out_file)
+                    return # Success
+                except Exception as ue:
+                    print(f"Urllib fallback also failed: {ue}")
+                    if i == retries - 1:
+                        raise Exception(f"Failed to download {url} after {retries} attempts")
 
 def extract_zip(zip_path, extract_to):
     print(f"Extracting {zip_path}...")
@@ -153,10 +169,28 @@ def prepare(arch="x64"):
     if not success:
         print("Error: Could not download NSSM from any source")
         sys.exit(1)
+    
     nssm_extract = BUILD_DIR / "nssm_src"
     extract_zip(nssm_zip, nssm_extract)
-    nssm_exe = nssm_extract / config["nssm_exe_path"]
+    
+    # Robustly find nssm.exe
+    nssm_exe = None
+    search_path = "win64/nssm.exe" if "64" in arch else "win32/nssm.exe"
+    
+    # Try the configured path first
+    if (nssm_extract / config["nssm_exe_path"]).exists():
+        nssm_exe = nssm_extract / config["nssm_exe_path"]
+    else:
+        # Fallback: search for nssm.exe in any subfolder
+        for p in nssm_extract.glob(f"**/{search_path}"):
+            nssm_exe = p
+            break
+            
+    if not nssm_exe:
+        print(f"Error: Could not find nssm.exe for {arch} in extracted files")
+        sys.exit(1)
 
+    print(f"Found NSSM at: {nssm_exe}")
     print("Organizing files for installer...")
     dest_src = BUILD_DIR / "app_files"
     shutil.copytree(src_folder, dest_src)
