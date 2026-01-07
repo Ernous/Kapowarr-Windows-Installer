@@ -27,14 +27,6 @@ ARCH_CONFIGS = {
             "https://nssm.cc/release/nssm-2.24.zip"
         ],
         "nssm_exe_path": "win32/nssm.exe"
-    },
-    "arm64": {
-        "python_url": "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-arm64.zip",
-        "nssm_urls": [
-            "https://github.com/dkxce/NSSM/releases/download/v2.25/NSSM_v2.25.zip",
-            "https://nssm.cc/release/nssm-2.24.zip"
-        ],
-        "nssm_exe_path": "win64/nssm.exe"
     }
 }
 
@@ -146,24 +138,11 @@ def prepare(arch="x64"):
     
     print("Installing dependencies into site-packages...")
     shutil.copy2(src_folder / "requirements.txt", BUILD_DIR / "requirements.txt")
-    if arch == "arm64":
-        req_path = BUILD_DIR / "requirements.txt"
-        req_text = req_path.read_text(encoding="utf-8", errors="ignore")
-        req_lines = req_text.splitlines()
-        new_lines = []
-        for line in req_lines:
-            stripped = line.strip()
-            if stripped.lower().startswith("cryptography"):
-                new_lines.append("cryptography>=46.0.0,<47")
-            else:
-                new_lines.append(line)
-        req_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
     
     try:
         pip_platform = {
             "x64": "win_amd64",
             "x86": "win32",
-            "arm64": "win_arm64",
         }[arch]
         pip_env = os.environ.copy()
         pip_cache_dir = BASE_DIR / ".pip_cache"
