@@ -1,5 +1,6 @@
 installer_output/
 build_temp/
+.pip_cache/
 version.nsh
 *.log
 installer_files/nssm.exe

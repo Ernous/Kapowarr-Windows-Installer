@@ -53,6 +53,14 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Cache pip downloads
+        uses: actions/cache@v4
+        with:
+          path: .pip_cache
+          key: pip-${{ runner.os }}-${{ matrix.arch }}-${{ needs.check-version.outputs.latest_version || github.sha }}
+          restore-keys: |
+            pip-${{ runner.os }}-${{ matrix.arch }}-
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip

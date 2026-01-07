@@ -153,6 +153,10 @@ def prepare(arch="x64"):
             "x86": "win32",
             "arm64": "win_arm64",
         }[arch]
+        pip_env = os.environ.copy()
+        pip_cache_dir = BASE_DIR / ".pip_cache"
+        pip_cache_dir.mkdir(exist_ok=True)
+        pip_env["PIP_CACHE_DIR"] = str(pip_cache_dir)
         subprocess.run([
             sys.executable, "-m", "pip", "install", 
             "--target", str(site_packages), 
@@ -165,9 +169,8 @@ def prepare(arch="x64"):
             "--no-input",
             "--progress-bar", "off",
             "--upgrade",
-            "--no-cache-dir",
             "-r", str(BUILD_DIR / "requirements.txt"),
-        ], check=True)
+        ], check=True, env=pip_env)
     except subprocess.CalledProcessError as e:
         print(f"Error installing dependencies: {e}")
         sys.exit(1)
