@@ -146,6 +146,18 @@ def prepare(arch="x64"):
     
     print("Installing dependencies into site-packages...")
     shutil.copy2(src_folder / "requirements.txt", BUILD_DIR / "requirements.txt")
+    if arch == "arm64":
+        req_path = BUILD_DIR / "requirements.txt"
+        req_text = req_path.read_text(encoding="utf-8", errors="ignore")
+        req_lines = req_text.splitlines()
+        new_lines = []
+        for line in req_lines:
+            stripped = line.strip()
+            if stripped.lower().startswith("cryptography"):
+                new_lines.append("cryptography>=46.0.0,<47")
+            else:
+                new_lines.append(line)
+        req_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
     
     try:
         pip_platform = {
