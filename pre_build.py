@@ -12,17 +12,17 @@ REPO_URL = "https://api.github.com/repos/Casvt/Kapowarr/releases/latest"
 ARCH_CONFIGS = {
     "x64": {
         "python_url": "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip",
-        "nssm_url": "https://github.com/nssm-mirror/nssm/raw/master/release/nssm-2.24.zip",
+        "nssm_url": "https://nssm.cc/release/nssm-2.24.zip",
         "nssm_exe_path": "nssm-2.24/win64/nssm.exe"
     },
     "x86": {
         "python_url": "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-win32.zip",
-        "nssm_url": "https://github.com/nssm-mirror/nssm/raw/master/release/nssm-2.24.zip",
+        "nssm_url": "https://nssm.cc/release/nssm-2.24.zip",
         "nssm_exe_path": "nssm-2.24/win32/nssm.exe"
     },
     "arm64": {
         "python_url": "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-arm64.zip",
-        "nssm_url": "https://github.com/nssm-mirror/nssm/raw/master/release/nssm-2.24.zip",
+        "nssm_url": "https://nssm.cc/release/nssm-2.24.zip",
         "nssm_exe_path": "nssm-2.24/win64/nssm.exe"
     }
 }
