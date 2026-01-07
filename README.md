@@ -8,7 +8,7 @@ This project provides a professional NSIS-based installer for Kapowarr on Window
 - Portable Python environment included
 - Windows Service support via NSSM
 - System tray application for status monitoring and control
-- Automated builds for x64, x86, and ARM64 architectures
+- Automated builds for x64 and x86 architectures
 
 ## Project Structure
 
