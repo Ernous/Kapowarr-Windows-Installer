@@ -58,6 +58,8 @@ jobs:
       - name: Run Pre-build for ${{ matrix.arch }}
         run: |
           python pre_build.py ${{ matrix.arch }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install NSIS
         run: |

@@ -34,6 +34,10 @@ INSTALLER_FILES = BASE_DIR / "installer_files"
 def download_file(url, dest):
     print(f"Downloading {url}...")
     headers = {'User-Agent': 'Mozilla/5.0'}
+    gh_token = os.environ.get("GH_TOKEN")
+    if gh_token:
+        headers['Authorization'] = f'token {gh_token}'
+    
     req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req) as response, open(dest, 'wb') as out_file:
         shutil.copyfileobj(response, out_file)
@@ -57,6 +61,10 @@ def prepare(arch="x64"):
 
     print("Fetching latest Kapowarr release info...")
     headers = {'User-Agent': 'Mozilla/5.0'}
+    gh_token = os.environ.get("GH_TOKEN")
+    if gh_token:
+        headers['Authorization'] = f'token {gh_token}'
+
     req = urllib.request.Request(REPO_URL, headers=headers)
     with urllib.request.urlopen(req) as response:
         data = json.loads(response.read().decode())
