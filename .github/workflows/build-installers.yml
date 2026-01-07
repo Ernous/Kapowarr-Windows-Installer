@@ -1,0 +1,100 @@
+name: Build Kapowarr Installers
+
+on:
+  schedule:
+    - cron: '0 * * * *' # Check every hour
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.check.outputs.new_version }}
+      latest_version: ${{ steps.check.outputs.latest_version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for new version
+        id: check
+        run: |
+          LATEST_RELEASE=$(curl -s https://api.github.com/repos/Casvt/Kapowarr/releases/latest | jq -r .tag_name)
+          
+          # Try to get the last version we built from GitHub Releases of THIS repo
+          CURRENT_BUILT=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r .tag_name || echo "none")
+          
+          echo "Latest Kapowarr version: $LATEST_RELEASE"
+          echo "Last built version: $CURRENT_BUILT"
+          
+          if [ "$LATEST_RELEASE" != "$CURRENT_BUILT" ] && [ "$LATEST_RELEASE" != "null" ]; then
+            echo "new_version=true" >> $GITHUB_OUTPUT
+            echo "latest_version=$LATEST_RELEASE" >> $GITHUB_OUTPUT
+          else
+            echo "new_version=false" >> $GITHUB_OUTPUT
+          fi
+
+  build:
+    needs: check-version
+    if: needs.check-version.outputs.new_version == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [x64, x86, arm64]
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Pre-build script will install other dependencies inside the portable python
+
+      - name: Run Pre-build for ${{ matrix.arch }}
+        run: |
+          python pre_build.py ${{ matrix.arch }}
+
+      - name: Install NSIS
+        run: |
+          choco install nsis -y
+
+      - name: Build Installer
+        run: |
+          makensis installer.nsi
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kapowarr-Installer-${{ matrix.arch }}
+          path: installer_output/*.exe
+
+  release:
+    needs: [check-version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: installers
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.check-version.outputs.latest_version || 'manual-build' }}
+          name: Kapowarr ${{ needs.check-version.outputs.latest_version || 'Manual Build' }}
+          body: |
+            Automated Windows Installers for Kapowarr version ${{ needs.check-version.outputs.latest_version }}.
+            
+            Supported Architectures:
+            - x64 (64-bit Windows)
+            - x86 (32-bit Windows)
+            - ARM64 (Windows on ARM)
+          files: installers/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
