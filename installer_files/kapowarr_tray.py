@@ -25,11 +25,21 @@ class KapowarrTray:
                 self.app_dir = current_dir.parent
             else:
                 self.app_dir = current_dir
-        self.log_dir = self.app_dir / "logs"
-        self.log_dir.mkdir(exist_ok=True)
-        self.tray_log = self.log_dir / "kapowarr_tray.log"
         
+        # Robust log directory selection
+        self.log_dir = self.app_dir / "logs"
+        try:
+            self.log_dir.mkdir(exist_ok=True)
+            test_file = self.log_dir / ".write_test"
+            test_file.touch()
+            test_file.unlink()
+        except (PermissionError, OSError):
+            self.log_dir = Path(os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))) / "Kapowarr" / "logs"
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+
+        self.tray_log = self.log_dir / "kapowarr_tray.log"
         self.log(f"Initializing KapowarrTray in {self.app_dir}")
+        self.log(f"Logging to {self.log_dir}")
         self.kapowarr_process = None
         self.icon = None
         self.is_running = False
@@ -179,9 +189,7 @@ class KapowarrTray:
             return
         
         try:
-            log_dir = self.app_dir / "logs"
-            log_dir.mkdir(exist_ok=True)
-            log_file = log_dir / "kapowarr_tray_server.log"
+            log_file = self.log_dir / "kapowarr_tray_server.log"
             
             kapowarr_script = self.app_dir / "Kapowarr.py"
             if not kapowarr_script.exists():

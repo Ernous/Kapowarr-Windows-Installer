@@ -42,6 +42,8 @@ Section "Kapowarr Application (Required)" MainSection
     File "LICENSE"
 
     CreateDirectory "$INSTDIR\logs"
+    AccessControl::GrantOnRegKey HKLM "Software\Kapowarr" "(BU)" "GenericWrite"
+    nsExec::Exec 'icacls "$INSTDIR\logs" /grant *S-1-5-32-545:(OI)(CI)M /T'
 
     DetailPrint "Configuring Python environment..."
     nsExec::ExecToLog 'cmd.exe /c ""$INSTDIR\installer_files\prepare_python.bat" "$INSTDIR" --no-pause"'
