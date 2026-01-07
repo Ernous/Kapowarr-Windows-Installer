@@ -156,17 +156,25 @@ class KapowarrTray:
         )
     
     def find_python_executable(self):
+        # 1. Try portable python in 'python' subdirectory
         portable_python = self.app_dir / "python" / "python.exe"
         if portable_python.exists():
             return str(portable_python)
+        
+        # 2. Try 'python' subdirectory of the directory containing the tray executable
+        if getattr(sys, 'frozen', False):
+            alt_portable = Path(sys.executable).parent / "python" / "python.exe"
+            if alt_portable.exists():
+                return str(alt_portable)
 
-        python_cmds = ['python', 'python3']
+        # 3. Try system python
+        python_cmds = [sys.executable, 'python', 'python3']
         for cmd in python_cmds:
             try:
-                result = subprocess.run([cmd, '--version'], capture_output=True, text=True)
-                if result.returncode == 0:
-                    return cmd
-            except FileNotFoundError:
+                # Use a simpler check for system python
+                subprocess.run([cmd, '--version'], capture_output=True, check=True)
+                return cmd
+            except:
                 continue
         return None
     
@@ -239,58 +247,38 @@ class KapowarrTray:
             def wait_for_port():
                 self.log("Waiting for port 5656 to open...")
                 
-                def get_last_log_lines(count=10):
-                    try:
-                        if log_file.exists():
-                            with open(log_file, "r", encoding="utf-8") as f:
-                                lines = f.readlines()
-                                return "".join(lines[-count:])
-                    except:
-                        pass
-                    return "Could not read log file."
-
-                time.sleep(0.5) 
-                if self.kapowarr_process.poll() is not None:
-                    exit_code = self.kapowarr_process.returncode
-                    last_error = get_last_log_lines()
-                    self.log(f"ERROR: Server process exited immediately with code {exit_code}")
-                    self.get_root().after(0, lambda: messagebox.showerror(
-                        "Kapowarr Startup Error", 
-                        f"Server failed to start (Code {exit_code}).\n\nLast log entries:\n{last_error}", 
-                        parent=self.get_root()
-                    ))
-                    return
-
-                for i in range(60):
-                    if self.is_port_open():
-                        self.log("Port 5656 is open! Server started.")
-                        self.is_running = True
-                        self.update_icon()
+                for _ in range(30): # Wait up to 30 seconds
+                    if self.kapowarr_process.poll() is not None:
+                        # Process died
+                        ret_code = self.kapowarr_process.returncode
+                        self.log(f"ERROR: Kapowarr process died with exit code {ret_code}")
+                        
+                        last_logs = ""
                         try:
-                            self.icon.notify("Server is running at http://localhost:5656", "Kapowarr started successfully!")
+                            if log_file.exists():
+                                with open(log_file, "r", encoding="utf-8") as f:
+                                    lines = f.readlines()
+                                    last_logs = "".join(lines[-20:])
                         except:
                             pass
+                        
+                        msg = f"Kapowarr failed to start (Exit code: {ret_code}).\n\nLast log lines:\n{last_logs}"
+                        messagebox.showerror("Startup Error", msg, parent=self.get_root())
+                        self.is_running = False
+                        self.update_icon()
                         return
-                    
-                    if self.kapowarr_process.poll() is not None:
-                        exit_code = self.kapowarr_process.returncode
-                        last_error = get_last_log_lines()
-                        self.log(f"ERROR: Server process exited with code {exit_code}")
-                        self.get_root().after(0, lambda: messagebox.showerror(
-                            "Kapowarr Error", 
-                            f"Server process stopped unexpectedly (Code {exit_code}).\n\nLast log entries:\n{last_error}", 
-                            parent=self.get_root()
-                        ))
+
+                    if self.is_port_open():
+                        self.log("Port 5656 is now open. Server started successfully.")
+                        self.is_running = True
+                        self.update_icon()
                         return
-                    
-                    time.sleep(0.5)
+                    time.sleep(1)
                 
-                self.log("ERROR: Timeout waiting for port 5656")
-                self.get_root().after(0, lambda: messagebox.showwarning(
-                    "Kapowarr Timeout", 
-                    f"Server process is still running, but port 5656 is not responding.\nCheck logs at: {log_file}", 
-                    parent=self.get_root()
-                ))
+                self.log("ERROR: Port 5656 did not open within 30 seconds")
+                messagebox.showwarning("Startup Warning", "Kapowarr is taking a long time to start. Check logs for details.", parent=self.get_root())
+                self.is_running = False
+                self.update_icon()
 
             threading.Thread(target=wait_for_port, daemon=True).start()
             
