@@ -32,15 +32,27 @@ BUILD_DIR = BASE_DIR / "build_temp"
 INSTALLER_FILES = BASE_DIR / "installer_files"
 
 def download_file(url, dest):
-    print(f"Downloading {url}...")
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    print(f"Downloading {url} to {dest}...")
     gh_token = os.environ.get("GH_TOKEN")
-    if gh_token:
-        headers['Authorization'] = f'token {gh_token}'
     
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req) as response, open(dest, 'wb') as out_file:
-        shutil.copyfileobj(response, out_file)
+    cmd = ["curl", "-L", "-s", "-f", url, "-o", str(dest)]
+    if gh_token and "github.com" in url:
+        cmd.extend(["-H", f"Authorization: token {gh_token}"])
+    
+    try:
+        subprocess.run(cmd, check=True)
+        if not dest.exists() or dest.stat().st_size == 0:
+            raise Exception("Downloaded file is empty or missing")
+    except subprocess.CalledProcessError as e:
+        print(f"Error downloading with curl: {e}")
+        # Fallback to urllib if curl fails
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        if gh_token and "github.com" in url:
+            headers['Authorization'] = f'token {gh_token}'
+        
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=60) as response, open(dest, 'wb') as out_file:
+            shutil.copyfileobj(response, out_file)
 
 def extract_zip(zip_path, extract_to):
     print(f"Extracting {zip_path}...")
@@ -60,16 +72,27 @@ def prepare(arch="x64"):
     BUILD_DIR.mkdir()
 
     print("Fetching latest Kapowarr release info...")
-    headers = {'User-Agent': 'Mozilla/5.0'}
     gh_token = os.environ.get("GH_TOKEN")
+    
+    cmd = ["curl", "-s", "-f", REPO_URL]
     if gh_token:
-        headers['Authorization'] = f'token {gh_token}'
-
-    req = urllib.request.Request(REPO_URL, headers=headers)
-    with urllib.request.urlopen(req) as response:
-        data = json.loads(response.read().decode())
+        cmd.extend(["-H", f"Authorization: token {gh_token}"])
+    
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
         zip_url = data['zipball_url']
         version = data['tag_name']
+    except Exception as e:
+        print(f"Error fetching release info with curl: {e}, trying urllib...")
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        if gh_token:
+            headers['Authorization'] = f'token {gh_token}'
+        req = urllib.request.Request(REPO_URL, headers=headers)
+        with urllib.request.urlopen(req) as response:
+            data = json.loads(response.read().decode())
+            zip_url = data['zipball_url']
+            version = data['tag_name']
     
     kapowarr_zip = BUILD_DIR / f"kapowarr_{version}.zip"
     download_file(zip_url, kapowarr_zip)
