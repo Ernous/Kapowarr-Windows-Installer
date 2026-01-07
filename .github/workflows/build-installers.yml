@@ -87,6 +87,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: installers
+          pattern: Kapowarr-Installer-*
           merge-multiple: true
 
       - name: Create Release
@@ -94,13 +95,8 @@ jobs:
         with:
           tag_name: ${{ needs.check-version.outputs.latest_version || 'manual-build' }}
           name: Kapowarr ${{ needs.check-version.outputs.latest_version || 'Manual Build' }}
-          body: |
-            Automated Windows Installers for Kapowarr version ${{ needs.check-version.outputs.latest_version }}.
-            
-            Supported Architectures:
-            - x64 (64-bit Windows)
-            - x86 (32-bit Windows)
-            - ARM64 (Windows on ARM)
-          files: installers/*.exe
+          generate_release_notes: true
+          files: |
+            installers/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

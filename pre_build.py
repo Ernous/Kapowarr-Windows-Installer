@@ -12,17 +12,26 @@ REPO_URL = "https://api.github.com/repos/Casvt/Kapowarr/releases/latest"
 ARCH_CONFIGS = {
     "x64": {
         "python_url": "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip",
-        "nssm_url": "https://nssm.cc/release/nssm-2.24.zip",
+        "nssm_urls": [
+            "https://github.com/nssm-mirror/nssm/raw/gh-pages/release/nssm-2.24.zip",
+            "https://nssm.cc/release/nssm-2.24.zip"
+        ],
         "nssm_exe_path": "nssm-2.24/win64/nssm.exe"
     },
     "x86": {
         "python_url": "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-win32.zip",
-        "nssm_url": "https://nssm.cc/release/nssm-2.24.zip",
+        "nssm_urls": [
+            "https://github.com/nssm-mirror/nssm/raw/gh-pages/release/nssm-2.24.zip",
+            "https://nssm.cc/release/nssm-2.24.zip"
+        ],
         "nssm_exe_path": "nssm-2.24/win32/nssm.exe"
     },
     "arm64": {
         "python_url": "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-arm64.zip",
-        "nssm_url": "https://nssm.cc/release/nssm-2.24.zip",
+        "nssm_urls": [
+            "https://github.com/nssm-mirror/nssm/raw/gh-pages/release/nssm-2.24.zip",
+            "https://nssm.cc/release/nssm-2.24.zip"
+        ],
         "nssm_exe_path": "nssm-2.24/win64/nssm.exe"
     }
 }
@@ -130,7 +139,20 @@ def prepare(arch="x64"):
 
     print("Downloading NSSM...")
     nssm_zip = BUILD_DIR / "nssm.zip"
-    download_file(config["nssm_url"], nssm_zip)
+    
+    success = False
+    for url in config["nssm_urls"]:
+        try:
+            download_file(url, nssm_zip)
+            success = True
+            break
+        except Exception as e:
+            print(f"Failed to download NSSM from {url}: {e}")
+            continue
+            
+    if not success:
+        print("Error: Could not download NSSM from any source")
+        sys.exit(1)
     nssm_extract = BUILD_DIR / "nssm_src"
     extract_zip(nssm_zip, nssm_extract)
     nssm_exe = nssm_extract / config["nssm_exe_path"]
