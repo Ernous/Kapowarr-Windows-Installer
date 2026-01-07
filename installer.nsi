@@ -43,6 +43,7 @@ Section "Kapowarr Application (Required)" MainSection
 
     CreateDirectory "$INSTDIR\logs"
     nsExec::Exec 'icacls "$INSTDIR\logs" /grant *S-1-5-32-545:(OI)(CI)M /T'
+    nsExec::Exec 'icacls "$INSTDIR" /grant *S-1-5-32-545:(OI)(CI)M /T'
 
     DetailPrint "Configuring Python environment..."
     nsExec::ExecToLog 'cmd.exe /c ""$INSTDIR\installer_files\prepare_python.bat" "$INSTDIR" --no-pause"'

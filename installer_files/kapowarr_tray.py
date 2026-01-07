@@ -8,6 +8,7 @@ import threading
 import time
 import webbrowser
 import socket
+import re
 from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox
@@ -26,7 +27,6 @@ class KapowarrTray:
             else:
                 self.app_dir = current_dir
         
-        # Robust log directory selection
         self.log_dir = self.app_dir / "logs"
         try:
             self.log_dir.mkdir(exist_ok=True)
@@ -43,6 +43,8 @@ class KapowarrTray:
         self.kapowarr_process = None
         self.icon = None
         self.is_running = False
+        self.is_starting = False
+        self.state_lock = threading.Lock()
         self.root = None
         
         try:
@@ -110,8 +112,15 @@ class KapowarrTray:
             return image
     
     def update_icon(self):
-        status_text = "Running" if self.is_running else "Stopped"
-        color = '#28a745' if self.is_running else '#dc3545'
+        if self.is_starting:
+            status_text = "Starting"
+            color = '#6c757d'
+        elif self.is_running:
+            status_text = "Running"
+            color = '#28a745'
+        else:
+            status_text = "Stopped"
+            color = '#dc3545'
         
         self.icon.icon = self.create_icon_image(color)
         self.icon.title = f"Kapowarr ({status_text})"
@@ -120,6 +129,56 @@ class KapowarrTray:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(1)
             return s.connect_ex((host, port)) == 0
+
+    def _pids_listening_on_port(self, port: int) -> set:
+        if os.name != "nt":
+            return set()
+        try:
+            result = subprocess.run(
+                ["netstat", "-ano", "-p", "tcp"],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            output = result.stdout or ""
+        except Exception:
+            return set()
+
+        pids = set()
+        port_suffix = f":{port}"
+        for line in output.splitlines():
+            if "LISTENING" not in line:
+                continue
+            if port_suffix not in line:
+                continue
+            parts = re.split(r"\s+", line.strip())
+            if len(parts) < 5:
+                continue
+            local_addr = parts[1]
+            state = parts[3]
+            pid = parts[4]
+            if state != "LISTENING":
+                continue
+            if not local_addr.endswith(port_suffix):
+                continue
+            try:
+                pids.add(int(pid))
+            except Exception:
+                continue
+        return pids
+
+    def _taskkill_pid_tree(self, pid: int) -> None:
+        if os.name != "nt":
+            return
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+        except Exception:
+            pass
 
     def status_checker(self):
         while True:
@@ -133,6 +192,8 @@ class KapowarrTray:
     
     def setup_tray(self):
         def get_status_label(item):
+            if self.is_starting:
+                return "Status: Starting"
             return f"Status: {'Running' if self.is_running else 'Stopped'}"
 
         menu = pystray.Menu(
@@ -140,8 +201,8 @@ class KapowarrTray:
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Open Web Interface", self.open_web_interface, default=True),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Start Server", self.start_server, enabled=lambda item: not self.is_running),
-            pystray.MenuItem("Stop Server", self.stop_server, enabled=lambda item: self.is_running),
+            pystray.MenuItem("Start Server", self.start_server, enabled=lambda item: not (self.is_running or self.is_starting)),
+            pystray.MenuItem("Stop Server", self.stop_server, enabled=lambda item: (self.is_running or self.is_starting)),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Start with Windows", self.toggle_autostart, checked=lambda item: self.is_autostart_enabled()),
             pystray.Menu.SEPARATOR,
@@ -156,22 +217,18 @@ class KapowarrTray:
         )
     
     def find_python_executable(self):
-        # 1. Try portable python in 'python' subdirectory
         portable_python = self.app_dir / "python" / "python.exe"
         if portable_python.exists():
             return str(portable_python)
         
-        # 2. Try 'python' subdirectory of the directory containing the tray executable
         if getattr(sys, 'frozen', False):
             alt_portable = Path(sys.executable).parent / "python" / "python.exe"
             if alt_portable.exists():
                 return str(alt_portable)
 
-        # 3. Try system python
         python_cmds = [sys.executable, 'python', 'python3']
         for cmd in python_cmds:
             try:
-                # Use a simpler check for system python
                 subprocess.run([cmd, '--version'], capture_output=True, check=True)
                 return cmd
             except:
@@ -179,14 +236,20 @@ class KapowarrTray:
         return None
     
     def start_server(self, icon=None, item=None):
-        if self.is_running:
-            self.log("Server is already running, ignoring start request")
-            return
+        with self.state_lock:
+            if self.is_running or self.is_starting:
+                self.log("Server is already running/starting, ignoring start request")
+                return
+            self.is_starting = True
+            if self.icon:
+                self.update_icon()
         
         if self.is_port_open():
             self.log("Port 5656 is already open. Server must be running as service or another instance.")
-            self.is_running = True
-            self.update_icon()
+            with self.state_lock:
+                self.is_running = True
+                self.is_starting = False
+                self.update_icon()
             return
 
         self.log("Starting server...")
@@ -194,6 +257,9 @@ class KapowarrTray:
         if not python_cmd:
             self.log("ERROR: Python executable not found")
             messagebox.showerror("Error", "Python not found. Please reinstall Kapowarr.", parent=self.get_root())
+            with self.state_lock:
+                self.is_starting = False
+                self.update_icon()
             return
         
         try:
@@ -203,13 +269,17 @@ class KapowarrTray:
             if not kapowarr_script.exists():
                 self.log(f"ERROR: Kapowarr.py not found at {kapowarr_script}")
                 messagebox.showerror("Error", f"Kapowarr.py not found at {kapowarr_script}", parent=self.get_root())
+                with self.state_lock:
+                    self.is_starting = False
+                    self.update_icon()
                 return
 
             self.log(f"Python: {python_cmd}")
             self.log(f"Script: {kapowarr_script}")
-            
+             
             env = os.environ.copy()
-            env["PYTHONPATH"] = str(self.app_dir) + os.pathsep + env.get("PYTHONPATH", "")
+            site_packages = self.app_dir / "python" / "site-packages"
+            env["PYTHONPATH"] = str(self.app_dir) + os.pathsep + str(site_packages) + os.pathsep + env.get("PYTHONPATH", "")
             env["PYTHONUNBUFFERED"] = "1"
             
             startupinfo = None
@@ -227,10 +297,16 @@ class KapowarrTray:
                 messagebox.showerror("Permission Error", 
                     f"Failed to write to log file: {log_file}\n\nPlease run Kapowarr Tray as Administrator or check folder permissions.", 
                     parent=self.get_root())
+                with self.state_lock:
+                    self.is_starting = False
+                    self.update_icon()
                 return
             except Exception as e:
                 self.log(f"ERROR: Failed to open log file: {e}")
                 messagebox.showerror("Error", f"Failed to open log file: {e}", parent=self.get_root())
+                with self.state_lock:
+                    self.is_starting = False
+                    self.update_icon()
                 return
 
             self.kapowarr_process = subprocess.Popen(
@@ -264,46 +340,79 @@ class KapowarrTray:
                         
                         msg = f"Kapowarr failed to start (Exit code: {ret_code}).\n\nLast log lines:\n{last_logs}"
                         messagebox.showerror("Startup Error", msg, parent=self.get_root())
-                        self.is_running = False
-                        self.update_icon()
+                        with self.state_lock:
+                            self.is_running = False
+                            self.is_starting = False
+                            self.update_icon()
                         return
 
                     if self.is_port_open():
                         self.log("Port 5656 is now open. Server started successfully.")
-                        self.is_running = True
-                        self.update_icon()
+                        with self.state_lock:
+                            self.is_running = True
+                            self.is_starting = False
+                            self.update_icon()
                         return
                     time.sleep(1)
                 
                 self.log("ERROR: Port 5656 did not open within 30 seconds")
                 messagebox.showwarning("Startup Warning", "Kapowarr is taking a long time to start. Check logs for details.", parent=self.get_root())
-                self.is_running = False
-                self.update_icon()
+                with self.state_lock:
+                    self.is_running = False
+                    self.is_starting = False
+                    self.update_icon()
 
             threading.Thread(target=wait_for_port, daemon=True).start()
             
         except Exception as e:
             self.log(f"ERROR starting server: {e}")
             messagebox.showerror("Error", f"Failed to start server: {str(e)}", parent=self.get_root())
+            with self.state_lock:
+                self.is_starting = False
+                self.update_icon()
     
     def stop_server(self, icon=None, item=None):
-        if self.kapowarr_process:
+        pids_to_kill = set()
+        if self.kapowarr_process and self.kapowarr_process.poll() is None:
             try:
-                self.kapowarr_process.terminate()
-                self.kapowarr_process.wait(timeout=5)
-            except:
-                try:
-                    self.kapowarr_process.kill()
-                except:
-                    pass
+                pids_to_kill.add(int(self.kapowarr_process.pid))
+            except Exception:
+                pass
+
+        if not pids_to_kill and self.is_port_open():
+            pids_to_kill |= self._pids_listening_on_port(5656)
+
+        for pid in sorted(pids_to_kill):
+            self._taskkill_pid_tree(pid)
+
+        if self.kapowarr_process and self.kapowarr_process.poll() is not None:
             self.kapowarr_process = None
 
-        if os.name == 'nt':
-            subprocess.run(['taskkill', '/F', '/IM', 'python.exe', '/FI', f'WINDOWTITLE eq Kapowarr*'], capture_output=True)
+        if getattr(self, "server_log_handle", None):
+            try:
+                self.server_log_handle.close()
+            except Exception:
+                pass
+            self.server_log_handle = None
+
+        for _ in range(20):
+            if not self.is_port_open():
+                break
+            time.sleep(0.25)
         
-        self.is_running = False
-        self.update_icon()
-        self.icon.notify("Server has been shut down.", "Kapowarr stopped")
+        with self.state_lock:
+            self.is_running = self.is_port_open()
+            self.is_starting = False
+            self.update_icon()
+
+        if self.is_running:
+            messagebox.showwarning(
+                "Kapowarr",
+                "Не получилось остановить сервер: порт 5656 всё ещё занят.",
+                parent=self.get_root()
+            )
+        else:
+            self.icon.notify("Server has been shut down.", "Kapowarr stopped")
     
     def open_web_interface(self, icon=None, item=None):
         webbrowser.open("http://localhost:5656")
@@ -355,8 +464,10 @@ class KapowarrTray:
         sys.exit(0)
     
     def run(self):
-        self.is_running = self.is_port_open()
-        self.update_icon()
+        with self.state_lock:
+            self.is_running = self.is_port_open()
+            self.is_starting = False
+            self.update_icon()
         
         if not self.is_running:
             threading.Thread(target=self.start_server, daemon=True).start()

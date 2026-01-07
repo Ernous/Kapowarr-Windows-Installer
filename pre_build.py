@@ -133,21 +133,39 @@ def prepare(arch="x64"):
     extract_zip(python_zip, python_dir)
     
     print("Configuring Python and installing dependencies...")
+    site_packages = python_dir / "site-packages"
+    site_packages.mkdir(exist_ok=True)
+    
     pth_file = next(python_dir.glob("python*._pth"))
     with open(pth_file, "w") as f:
-        f.write(f"{pth_file.stem}.zip\n.\nimport site\n")
+        f.write(f"{pth_file.stem}.zip\n")
+        f.write(".\n")
+        f.write("site-packages\n")
+        f.write("..\n")
+        f.write("import site\n")
     
-    # Use host Python's pip to install dependencies directly into portable directory
-    # This is much faster and more reliable than installing pip into portable Python
-    print("Installing dependencies into portable Python directory...")
+    print("Installing dependencies into site-packages...")
     shutil.copy2(src_folder / "requirements.txt", BUILD_DIR / "requirements.txt")
     
     try:
+        pip_platform = {
+            "x64": "win_amd64",
+            "x86": "win32",
+            "arm64": "win_arm64",
+        }[arch]
         subprocess.run([
             sys.executable, "-m", "pip", "install", 
-            "--target", str(python_dir), 
+            "--target", str(site_packages), 
+            "--platform", pip_platform,
+            "--python-version", "311",
+            "--implementation", "cp",
+            "--abi", "cp311",
+            "--only-binary", ":all:",
+            "--upgrade",
+            "--no-cache-dir",
             "-r", str(BUILD_DIR / "requirements.txt"),
-            "pystray", "Pillow", "pywin32"
+            "pystray", "Pillow", "pywin32", "cffi", "cryptography", 
+            "aiohttp", "aiohttp-jinja2", "aiohttp-xmlrpc", "certifi", "chardet", "idna", "multidict", "yarl", "async-timeout", "attrs"
         ], check=True)
     except subprocess.CalledProcessError as e:
         print(f"Error installing dependencies: {e}")
@@ -173,15 +191,12 @@ def prepare(arch="x64"):
     nssm_extract = BUILD_DIR / "nssm_src"
     extract_zip(nssm_zip, nssm_extract)
     
-    # Robustly find nssm.exe
     nssm_exe = None
     search_path = "win64/nssm.exe" if "64" in arch else "win32/nssm.exe"
     
-    # Try the configured path first
     if (nssm_extract / config["nssm_exe_path"]).exists():
         nssm_exe = nssm_extract / config["nssm_exe_path"]
     else:
-        # Fallback: search for nssm.exe in any subfolder
         for p in nssm_extract.glob(f"**/{search_path}"):
             nssm_exe = p
             break
