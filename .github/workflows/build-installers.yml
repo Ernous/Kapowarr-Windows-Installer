@@ -63,10 +63,15 @@ jobs:
 
       - name: Install NSIS
         run: |
-          choco install nsis -y
+          choco install nsis.install -y
 
       - name: Build Installer
+        shell: pwsh
         run: |
+          $nsisPath = "C:\Program Files (x86)\NSIS"
+          if (Test-Path "$nsisPath\makensis.exe") {
+              $env:PATH = "$nsisPath;" + $env:PATH
+          }
           makensis installer.nsi
 
       - name: Upload Artifact
