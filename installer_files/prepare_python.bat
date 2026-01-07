@@ -31,7 +31,7 @@ echo site-packages >> "%PYTHON_DIR%\python311._pth"
 echo import site >> "%PYTHON_DIR%\python311._pth"
 
 set "PYTHON_CMD=%PYTHON_DIR%\python.exe"
-"!PYTHON_CMD!" -c "import aiohttp; import cryptography; import pystray; print('All key libraries verified')" >> "%LOG_FILE%" 2>&1
+"!PYTHON_CMD!" -c "import aiohttp; import cryptography; import _cffi_backend; print('All key libraries verified')" >> "%LOG_FILE%" 2>&1
 
 if %errorlevel% neq 0 (
     echo Error: Python environment verification failed. >> "%LOG_FILE%"

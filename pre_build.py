@@ -161,11 +161,12 @@ def prepare(arch="x64"):
             "--implementation", "cp",
             "--abi", "cp311",
             "--only-binary", ":all:",
+            "--disable-pip-version-check",
+            "--no-input",
+            "--progress-bar", "off",
             "--upgrade",
             "--no-cache-dir",
             "-r", str(BUILD_DIR / "requirements.txt"),
-            "pystray", "Pillow", "pywin32", "cffi", "cryptography", 
-            "aiohttp", "aiohttp-jinja2", "aiohttp-xmlrpc", "certifi", "chardet", "idna", "multidict", "yarl", "async-timeout", "attrs"
         ], check=True)
     except subprocess.CalledProcessError as e:
         print(f"Error installing dependencies: {e}")
