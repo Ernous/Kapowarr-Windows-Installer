@@ -97,6 +97,6 @@ jobs:
           name: Kapowarr ${{ needs.check-version.outputs.latest_version || 'Manual Build' }}
           generate_release_notes: true
           files: |
-            installers/*.exe
+            installers/Kapowarr-*-NSIS-Setup-*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
